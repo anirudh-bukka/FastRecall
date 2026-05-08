@@ -40,6 +40,7 @@ Writes are WAL-first. Handlers do not directly mutate the cache index on insert.
 
 
 **Startup Flow**
+
 On boot, the service loads config, creates or derives a node ID, computes the snapshot path from the WAL path, initializes an empty `SemanticIndex`, tries to load a snapshot first, then replays only WAL entries newer than the snapshot watermark. Tombstone entries remove existing UUIDs during replay. After replay, it runs a startup expiry pass before binding the listener, opens the WAL at the recovered sequence number, starts the group-commit task, optionally starts clustering/TLS, starts the TTL reaper, builds `AppState`, and finally serves HTTP.
 
 
