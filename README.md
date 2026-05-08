@@ -1,7 +1,9 @@
 # FastRecall
 A standalone service to return cached responses for semantically similar queries.
 
-I inspected the repo read-only and did not create a project directory or generate code.
+**This is WIP**
+
+## Plan and Overview
 
 **Core Idea**
 FastRecall is a standalone Rust HTTP service for semantic LLM response caching. Your app sends an embedding plus metadata; FastRecall returns a cached response if either the text exactly matches a prior query or the vector is close enough in cosine/HNSW space. It is intentionally a service, not an in-process library, so many apps/languages can share one cache and the cache survives app restarts.
