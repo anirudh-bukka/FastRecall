@@ -1,0 +1,2 @@
+"""Optional embedding support."""
+
