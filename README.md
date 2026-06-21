@@ -1,74 +1,142 @@
 # FastRecall
 
-**This is WIP.**
+**Status: skeleton — implementation in progress.**
 
-FastRecall is a local-first Python project for indexing and querying documents
-and code repositories with structure-aware retrieval.
+FastRecall is a semantic LLM response cache.  It sits in front of your LLM
+API calls and returns cached responses for semantically similar queries.
+Because it exposes an HTTP API, any language can use it.
 
-It is inspired by FerroCache's clean organization, but it is not a direct
-Rust-to-Python translation. FastRecall starts simpler:
-
-- documents are indexed as pages, sections, headings, paragraphs, tables, and
-  summary nodes;
-- code repositories are indexed as files, modules, symbols, imports,
-  relationships, tests, and summaries;
-- embeddings are optional support, not the only retrieval mechanism;
-- two repositories can be indexed side by side without mixing metadata;
-- the first version should be understandable, hackable, and local-first.
-
-## What FastRecall Is
-
-FastRecall is intended to answer questions like:
-
-- "Where is cache eviction implemented in repo_a?"
-- "Does repo_b have an equivalent implementation?"
-- "Compare retry logic across both repositories."
-- "Which tests cover this behavior?"
-- "Explain this PDF section and show neighboring context."
-- "Find similar functions related to authentication."
-
-## What FastRecall Is Not
-
-FastRecall is not intended to begin as:
-
-- a production distributed cache;
-- a Kubernetes/microservice system;
-- a naive "chunk everything and throw it into a vector database" project;
-- a replacement for source control, documentation, or test runners;
-- a finished implementation.
-
-This repository is intentionally skeletal. The Python files contain commented
-TODOs, expected classes, expected functions, and input/output notes so the
-implementation can be written gradually.
-
-## Important Docs
-
-- [Architecture](docs/architecture.md)
-- [Flowcharts](docs/flowcharts.md)
-- [Data Model](docs/data_model.md)
-- [Developer Journey](docs/developer_journey.md)
-- [Example Commands](docs/commands.md)
-
-## Planned Commands
-
-```bash
-fastrecall init
-fastrecall ingest-docs ./docs
-fastrecall ingest-repo ./repo-a --name repo_a
-fastrecall ingest-repo ./repo-b --name repo_b
-fastrecall query "Where is cache eviction implemented?" --repo repo_a
-fastrecall query "Compare cache eviction in repo_a and repo_b"
-fastrecall explain-symbol CacheManager --repo repo_a
-fastrecall find-similar "retry logic" --repos repo_a repo_b
+```
+Client ──► POST /v1/chat/completions
+                │
+        ┌───────▼────────┐
+        │  Semantic Cache │
+        │  (cosine sim)   │
+        └───┬─────────┬───┘
+        HIT │         │ MISS
+            │         ▼
+            │    upstream LLM
+            │    (OpenAI/Anthropic/…)
+            │         │
+            └────◄────┘ store + return
 ```
 
-## Design Principle
+## Why semantic caching?
 
-Vector search answers: "What looks semantically related?"
+LLM API calls are expensive.  Semantically similar queries should reuse cached
+answers instead of paying for a new completion.
 
-Page and hierarchy indexing answers: "Where in the document structure should I
-look?"
+- "What is the capital of France?" and "France's capital city?" → same answer.
+- Unlike exact-string caching, semantically equivalent phrasings always hit.
+- The cache survives application restarts (SQLite on disk).
+- Deploy once, share across your entire fleet.
 
-Symbol and graph indexing answers: "What is actually connected in the code?"
+## Install
 
-FastRecall combines those views instead of choosing only one.
+```bash
+# Core server + local embeddings (no API key needed):
+pip install fastrecall[local]
+
+# If you prefer OpenAI embeddings:
+pip install fastrecall[openai]
+```
+
+## Quick start — server mode
+
+```bash
+# Start the cache server (forwards misses to OpenAI):
+fastrecall serve \
+  --upstream https://api.openai.com/v1 \
+  --api-key $OPENAI_API_KEY \
+  --threshold 0.92
+
+# Point your client at FastRecall instead of OpenAI:
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "What is the capital of France?"}]}'
+```
+
+On the first request: miss — FastRecall forwards to OpenAI and stores the
+response.  On a semantically identical follow-up: hit — returned in <5ms
+with `X-Cache: HIT`.
+
+## Quick start — library mode
+
+```python
+from fastrecall import SemanticCache, CacheConfig
+from pathlib import Path
+
+cache = SemanticCache(CacheConfig(storage_path=Path("cache.db")))
+
+result = cache.lookup("What is the capital of France?")
+if result.hit:
+    print("Cache hit:", result.entry.response)
+else:
+    response = call_my_llm("What is the capital of France?")
+    cache.store(query_text="What is the capital of France?", response=response, model="gpt-4o")
+```
+
+## Configuration
+
+| Option | Default | Description |
+|---|---|---|
+| `similarity_threshold` | `0.92` | Cosine similarity cutoff (0–1). Lower = more hits, higher risk of wrong answers. |
+| `embedding_provider` | `"local"` | `"local"` (sentence-transformers) or `"openai"`. |
+| `embedding_model` | `"all-MiniLM-L6-v2"` | Model passed to the provider. |
+| `ttl_seconds` | `None` | Seconds before entries expire. `None` = never. |
+| `max_entries` | `None` | LRU eviction cap. `None` = unbounded. |
+| `storage_path` | `.fastrecall/cache.db` | SQLite database path. |
+| `upstream_base_url` | `None` | LLM endpoint to call on misses. |
+
+## Architecture
+
+```
+fastrecall/
+├── cache/
+│   ├── engine.py        ← SemanticCache: lookup() + store()
+│   └── eviction.py      ← background TTL sweep
+├── embeddings/
+│   ├── base.py          ← EmbeddingProvider Protocol
+│   ├── local.py         ← sentence-transformers (default)
+│   └── openai_embed.py  ← OpenAI text-embedding-3-small
+├── similarity/
+│   └── cosine.py        ← vectorized cosine similarity (numpy)
+├── storage/
+│   ├── schema.sql       ← SQLite table definitions
+│   └── sqlite.py        ← insert, load, evict, stats
+├── proxy/
+│   ├── openai.py        ← forward misses to OpenAI-compatible APIs
+│   └── anthropic.py     ← forward misses to Anthropic Messages API
+├── server/
+│   ├── app.py           ← FastAPI app factory + lifespan
+│   └── routes.py        ← POST /v1/chat/completions, GET /cache/stats, …
+├── config.py            ← CacheConfig dataclass
+├── models.py            ← CacheEntry, CacheLookupResult, CacheStats
+└── cli.py               ← `fastrecall serve / stats / clear`
+```
+
+## CLI
+
+```bash
+fastrecall serve --port 8080 --threshold 0.92
+fastrecall stats
+fastrecall clear --namespace my-app
+```
+
+## Namespaces
+
+Use the `X-Namespace` request header to partition the cache.  Different
+applications sharing one FastRecall instance will not see each other's entries:
+
+```bash
+curl -H "X-Namespace: app-a" http://localhost:8080/v1/chat/completions ...
+curl -H "X-Namespace: app-b" http://localhost:8080/v1/chat/completions ...
+```
+
+## Scaling beyond SQLite
+
+For V1, FastRecall scans all stored vectors in memory (O(n) per lookup).  This
+handles tens of thousands of entries with sub-millisecond similarity search.
+To scale further, replace `storage/sqlite.py` with a vector-database-backed
+implementation (Qdrant, pgvector, Chroma) — the `SemanticCache` API does not
+change.

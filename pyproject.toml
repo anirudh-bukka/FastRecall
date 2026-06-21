@@ -1,17 +1,68 @@
 [project]
 name = "fastrecall"
 version = "0.1.0"
-description = "Local-first structured retrieval for documents and code repositories."
+description = "Semantic LLM response cache — deploy once, share across your fleet."
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
-dependencies = []
+
+# Core dependencies: always installed.
+dependencies = [
+    "click>=8.1.0",
+    "fastapi>=0.110.0",
+    "httpx>=0.27.0",
+    "numpy>=1.26.0",
+    "uvicorn[standard]>=0.29.0",
+]
+
+[project.optional-dependencies]
+# pip install fastrecall[local]
+local = [
+    "sentence-transformers>=2.7.0",
+]
+# pip install fastrecall[openai]
+openai = [
+    "openai>=1.0.0",
+]
+# pip install fastrecall[anthropic]
+anthropic = [
+    "anthropic>=0.21.0",
+]
+# pip install fastrecall[dev]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",      # for FastAPI TestClient
+    "ruff>=0.4.0",
+    "mypy>=1.9.0",
+]
+# pip install fastrecall[all]  — everything
+all = [
+    "fastrecall[local,openai,anthropic,dev]",
+]
 
 [project.scripts]
 fastrecall = "fastrecall.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/anirudh-bukka/FastRecall"
+Issues = "https://github.com/anirudh-bukka/FastRecall/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
+target-version = "py311"
 
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
