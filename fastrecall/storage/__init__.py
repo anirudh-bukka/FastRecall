@@ -1,6 +1,1 @@
-"""Storage package.
-
-TODO:
-- Re-export workspace initialization helpers.
-"""
-
+"""Storage package — SQLite-backed persistence for cache entries."""

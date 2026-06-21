@@ -1,2 +1,0 @@
-"""Answer composition package."""
-

@@ -1,142 +1,100 @@
-"""Shared data models for FastRecall.
+"""Core data models for FastRecall.
 
-These models are intentionally plain dataclasses. They should be easy to
-serialize to JSONL or SQLite rows.
+Every record here is a plain dataclass so it can be serialized to JSON or
+stored as a SQLite row without any ORM magic.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 
-@dataclass(slots=True)
-class RepositoryRecord:
-    """One indexed code repository."""
+@dataclass
+class CacheEntry:
+    """One cached LLM response stored in the semantic cache.
 
-    repo_id: str
-    name: str
-    root_path: str
-    language_hints: list[str] = field(default_factory=list)
-    created_at: str | None = None
+    The embedding is stored alongside the query text so we can compute cosine
+    similarity at lookup time without re-embedding every entry.
+
+    Fields:
+        entry_id:   stable UUID for this row.
+        query_text: the normalized text that was embedded (see cache/engine.py
+                    for what "normalized" means for chat messages).
+        embedding:  the float vector produced by the embedding provider.
+        response:   the raw LLM response, stored as a JSON string so the caller
+                    receives exactly what the upstream API would have returned.
+        model:      the upstream model name (e.g. "gpt-4o", "claude-3-5-sonnet").
+        namespace:  logical partition so different apps can share one server
+                    without seeing each other's entries.
+        created_at: Unix timestamp (float) of when this entry was written.
+        expires_at: Unix timestamp after which this entry is stale, or None for
+                    no expiry.
+        hit_count:  how many times this entry has been served from cache.
+        metadata:   arbitrary caller-supplied key/value pairs.
+    """
+
+    entry_id: str
+    query_text: str
+    embedding: list[float]
+    response: str
+    model: str | None
+    namespace: str
+    created_at: float
+    expires_at: float | None = None
+    hit_count: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
-class DocumentRecord:
-    """One indexed document."""
+@dataclass
+class CacheLookupResult:
+    """Outcome of a semantic cache lookup.
 
-    document_id: str
-    source_path: str
-    title: str | None = None
-    document_type: str | None = None
-    created_at: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    hit=True  means a sufficiently similar entry was found and its response
+              can be returned directly to the caller.
+    hit=False means no match exceeded the similarity threshold; the caller must
+              forward the request to the upstream LLM and then call store().
+    """
 
-
-@dataclass(slots=True)
-class FileRecord:
-    """One source file inside a repository."""
-
-    file_id: str
-    repo_id: str
-    path: str
-    language: str | None = None
-    size_bytes: int = 0
-    content_hash: str | None = None
-    is_test: bool = False
-    is_generated: bool = False
-    metadata: dict[str, Any] = field(default_factory=dict)
+    hit: bool
+    entry: CacheEntry | None = None
+    similarity: float | None = None
 
 
-@dataclass(slots=True)
-class SymbolRecord:
-    """One code symbol: class, function, method, package, keyword, etc."""
+@dataclass
+class CacheStats:
+    """Runtime metrics returned by GET /cache/stats.
 
-    symbol_id: str
-    repo_id: str
-    file_id: str
-    name: str
-    kind: str
-    language: str
-    start_line: int | None = None
-    end_line: int | None = None
-    parent_symbol_id: str | None = None
-    signature: str | None = None
-    docstring: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    hit_rate is computed as hit_count / (hit_count + miss_count), or 0.0 when
+    no requests have been served yet.
+    """
+
+    total_entries: int
+    hit_count: int
+    miss_count: int
+    hit_rate: float
+    oldest_entry_age_seconds: float | None
 
 
-@dataclass(slots=True)
-class ChunkRecord:
-    """A text span used for lexical search, summaries, or optional embeddings."""
+@dataclass
+class ChatMessage:
+    """One turn in a chat conversation (mirrors the OpenAI messages schema).
 
-    chunk_id: str
-    source_type: Literal["document", "code", "summary"]
-    source_id: str
-    text: str
-    repo_id: str | None = None
-    document_id: str | None = None
-    start_line: int | None = None
-    end_line: int | None = None
-    page_number: int | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    Storing this as a dataclass rather than a raw dict makes it easier to
+    extract the parts we care about when building the query text to embed.
+    """
+
+    role: str    # "system" | "user" | "assistant" | "tool"
+    content: str
 
 
-@dataclass(slots=True)
-class PageNode:
-    """A document page, section, heading, paragraph, table, or summary node."""
+@dataclass
+class ProxiedRequest:
+    """A decoded incoming request that the server will try to serve from cache.
 
-    node_id: str
-    document_id: str
-    kind: str
-    title: str | None = None
-    page_number: int | None = None
-    parent_id: str | None = None
-    previous_id: str | None = None
-    next_id: str | None = None
-    text: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
+    If the cache misses, the server uses this record to reconstruct the exact
+    body to forward to the upstream LLM.
+    """
 
-
-@dataclass(slots=True)
-class CodeNode:
-    """A repository/folder/file/symbol node in the code hierarchy."""
-
-    node_id: str
-    repo_id: str
-    kind: str
-    name: str
-    file_id: str | None = None
-    symbol_id: str | None = None
-    parent_id: str | None = None
-    summary: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class EdgeRecord:
-    """A relationship between two records/nodes."""
-
-    edge_id: str
-    repo_id: str
-    from_id: str
-    to_id: str
-    edge_type: str
-    confidence: float = 1.0
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class RetrievalResult:
-    """One retrieval candidate returned by a retriever."""
-
-    result_id: str
-    source_type: str
-    source_id: str
-    score: float
-    retriever: str
-    title: str | None = None
-    snippet: str | None = None
-    repo_id: str | None = None
-    document_id: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-
+    messages: list[ChatMessage]
+    model: str
+    namespace: str
+    raw_body: dict[str, Any]  # original request JSON, forwarded verbatim on miss

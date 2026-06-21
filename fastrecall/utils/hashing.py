@@ -1,29 +1,29 @@
-"""Hashing helpers for stable local IDs."""
+"""Stable ID generation for cache entries."""
 
 import hashlib
+import uuid
 
 
-def stable_id(prefix: str, *parts: str) -> str:
-    """Create a stable ID from string parts.
+def new_entry_id() -> str:
+    """Generate a UUID4 string for a new cache entry.
 
-    Input:
-    - prefix: entity type, e.g. repo/file/symbol/page.
-    - parts: stable identifying strings.
-
-    Output:
-    - compact stable ID.
-
-    TODO:
-    - Decide whether IDs should be longer for collision resistance.
+    We use UUID4 (random) rather than a hash of the query so that two identical
+    queries stored at different times each get their own row.  Deduplication is
+    handled at lookup time via cosine similarity, not at insertion time via key
+    collision.
     """
 
-    payload = "\0".join(parts).encode("utf-8", errors="replace")
-    digest = hashlib.sha256(payload).hexdigest()[:16]
-    return f"{prefix}_{digest}"
+    return str(uuid.uuid4())
 
 
-def content_hash(text: str) -> str:
-    """Hash file/document text content."""
+def query_fingerprint(text: str) -> str:
+    """Produce a short deterministic fingerprint for a query string.
 
-    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+    This is NOT the cache key (lookups use cosine similarity over embeddings).
+    The fingerprint is only used for debugging and logging — it gives you a
+    short stable string you can grep for across logs without exposing the full
+    query text.
+    """
 
+    digest = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+    return digest[:12]
