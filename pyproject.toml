@@ -1,12 +1,12 @@
 [project]
 name = "fastrecall"
-version = "0.1.0"
+version = "0.1.1"
 description = "Semantic LLM response cache — deploy once, share across your fleet."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [
-    { name = "Anirudh Bukka", email = "abukka@eightfold.ai" },
+    { name = "Anirudh Bukka", email = "anirudh.bukka@gmail.com" },
 ]
 keywords = ["llm", "cache", "semantic", "ai", "openai", "anthropic", "proxy", "embeddings"]
 classifiers = [
