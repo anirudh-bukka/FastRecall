@@ -3,8 +3,24 @@ name = "fastrecall"
 version = "0.1.0"
 description = "Semantic LLM response cache — deploy once, share across your fleet."
 readme = "README.md"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
+authors = [
+    { name = "Anirudh Bukka", email = "abukka@eightfold.ai" },
+]
+keywords = ["llm", "cache", "semantic", "ai", "openai", "anthropic", "proxy", "embeddings"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 
 # Core dependencies: always installed.
 dependencies = [
