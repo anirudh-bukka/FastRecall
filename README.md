@@ -26,7 +26,7 @@ Client ──► POST /v1/chat/completions
 LLM API calls are expensive.  Semantically similar queries should reuse cached
 answers instead of paying for a new completion.
 
-- "What is the capital of France?" and "France's capital city?" → same answer.
+- "What's the absolute worst-case scenario if I moonlit on the side without telling HR?" and "Are there legal grounds for immediate termination if I take up a secondary freelance gig under the radar?" → same answer.
 - Unlike exact-string caching, semantically equivalent phrasings always hit.
 - The cache survives application restarts (SQLite on disk).
 - Deploy once, share across your entire fleet.
@@ -53,7 +53,7 @@ fastrecall serve \
 # Point your client at FastRecall instead of OpenAI:
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "What is the capital of France?"}]}'
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "What'\''s the absolute worst-case scenario if I moonlit on the side without telling HR?"}]}'
 ```
 
 On the first request: miss — FastRecall forwards to OpenAI and stores the
@@ -68,12 +68,13 @@ from pathlib import Path
 
 cache = SemanticCache(CacheConfig(storage_path=Path("cache.db")))
 
-result = cache.lookup("What is the capital of France?")
+prompt = "What's the absolute worst-case scenario if I moonlit on the side without telling HR?"
+result = cache.lookup(prompt)
 if result.hit:
     print("Cache hit:", result.entry.response)
 else:
-    response = call_my_llm("What is the capital of France?")
-    cache.store(query_text="What is the capital of France?", response=response, model="gpt-4o")
+    response = call_my_llm(prompt)
+    cache.store(query_text=prompt, response=response, model="gpt-4o")
 ```
 
 ## Configuration
